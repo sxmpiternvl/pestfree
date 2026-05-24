@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm create *)",
+      "Bash(npm install *)",
+      "Bash(npx create-next-app@latest . --yes --ts --tailwind --eslint --app --no-src-dir --import-alias \"@/*\")",
+      "Bash(pnpm install *)",
+      "Bash(pnpm approve-builds *)",
+      "Bash(pnpm *)",
+      "Bash(./node_modules/.bin/prisma generate *)",
+      "Bash(apps/api/node_modules/.bin/prisma generate *)",
+      "Bash(node_modules/.bin/prisma generate *)",
+      "Bash(node_modules/.bin/tsc *)",
+      "Bash(/Users/sss/Documents/ai/apps/api/node_modules/.bin/tsc --noEmit -p /Users/sss/Documents/ai/apps/api/tsconfig.json)",
+      "Bash(node_modules/.bin/next build *)",
+      "Bash(node_modules/.bin/next dev *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(kill %1)",
+      "Bash(npm show *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
