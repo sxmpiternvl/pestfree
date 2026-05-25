@@ -25,7 +25,11 @@
       "Bash(sed -i '' 's/Loader2/Loader/g; s/AlertCircle/CircleAlert/g' components/LeadForm.tsx)",
       "Bash(sed -i '' 's/FileCheck2/FileCheck/g' components/sections/WhyUs.tsx)",
       "Bash(sed -i '' 's/\\\\bHome\\\\b/House/g' components/sections/ForWhom.tsx)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(npx prisma *)",
+      "Bash(pg_isready)",
+      "Bash(psql -U sss -d postgres -c \"\\\\du\")",
+      "Bash(psql -U sss -d postgres -c \"\\\\l\")"
     ]
   }
 }

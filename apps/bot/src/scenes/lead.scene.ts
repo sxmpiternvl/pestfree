@@ -1,132 +1,224 @@
 import { Markup, Scenes } from 'telegraf';
+import { dict, SERVICES, type ServiceKey } from '../i18n';
 import type { BotContext } from '../types';
-
-const SERVICE_MAP: Record<string, string> = {
-  DISINFECTION: 'Дезинфекция',
-  DISINSECTION: 'Дезинсекция',
-  DERATIZATION: 'Дератизация',
-};
 
 function lead(ctx: BotContext): NonNullable<BotContext['scene']['session']['lead']> {
   return ctx.scene.session.lead;
 }
 
+function tFor(ctx: BotContext) {
+  return dict(ctx.session.lang);
+}
+
+// Build the inline keyboard with all 6 services (2 columns).
+function serviceKeyboard(ctx: BotContext) {
+  const t = tFor(ctx);
+  const rows: ReturnType<typeof Markup.button.callback>[][] = [];
+  for (let i = 0; i < SERVICES.length; i += 2) {
+    const row = SERVICES.slice(i, i + 2).map((s) => {
+      const svc = t.services[s];
+      return Markup.button.callback(`${svc.icon} ${svc.label}`, `svc:${s}`);
+    });
+    rows.push(row);
+  }
+  return Markup.inlineKeyboard(rows);
+}
+
+function normalizePhone(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('+')) return trimmed;
+  // Telegram's contact.phone_number is usually digits-only like "998901234567"
+  if (/^\d+$/.test(trimmed)) return `+${trimmed}`;
+  return trimmed;
+}
+
 export const leadScene = new Scenes.WizardScene<BotContext>(
   'lead',
 
-  // Step 0 — enter: show service keyboard
+  // Step 0 — show service keyboard.
   async (ctx) => {
     ctx.scene.session.lead = {};
-    await ctx.reply(
-      'Выберите тип услуги:',
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🦠 Дезинфекция', 'svc:DISINFECTION')],
-        [Markup.button.callback('🪲 Дезинсекция', 'svc:DISINSECTION')],
-        [Markup.button.callback('🐀 Дератизация', 'svc:DERATIZATION')],
-      ]),
-    );
+    const t = tFor(ctx);
+    await ctx.reply(t.chooseService, serviceKeyboard(ctx));
     return ctx.wizard.next();
   },
 
-  // Step 1 — handle service selection
+  // Step 1 — handle service selection.
   async (ctx) => {
+    const t = tFor(ctx);
     if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) {
-      await ctx.reply('Пожалуйста, выберите услугу из списка выше.');
+      await ctx.reply(t.pleasePickService);
       return;
     }
-    const { data } = ctx.callbackQuery;
+    const data = ctx.callbackQuery.data;
     if (!data.startsWith('svc:')) {
-      await ctx.reply('Пожалуйста, выберите услугу из списка выше.');
+      await ctx.reply(t.pleasePickService);
       return;
     }
-    const service = data.slice(4);
+    const service = data.slice(4) as ServiceKey;
+    if (!(service in t.services)) {
+      await ctx.reply(t.pleasePickService);
+      return;
+    }
+    const svc = t.services[service];
     lead(ctx).service = service;
-    lead(ctx).serviceLabel = SERVICE_MAP[service];
+    lead(ctx).serviceLabel = svc.label;
     await ctx.answerCbQuery();
-    await ctx.reply(`✅ Выбрано: ${SERVICE_MAP[service]}\n\nВведите ваше ФИО:`);
+    await ctx.reply(`${t.serviceChosen} ${svc.label}\n\n${t.askName}`);
     return ctx.wizard.next();
   },
 
-  // Step 2 — full name
+  // Step 2 — full name → then prompt phone with share-contact button.
   async (ctx) => {
+    const t = tFor(ctx);
     if (!ctx.message || !('text' in ctx.message)) {
-      await ctx.reply('Пожалуйста, введите ваше ФИО текстом.');
+      await ctx.reply(t.pleaseText);
       return;
     }
     const text = ctx.message.text.trim();
     if (text.length < 2) {
-      await ctx.reply('ФИО слишком короткое. Введите полное имя:');
+      await ctx.reply(t.nameTooShort);
       return;
     }
     lead(ctx).fullName = text;
-    await ctx.reply('Введите ваш номер телефона:');
+    await ctx.reply(t.askPhone, {
+      reply_markup: {
+        keyboard: [[{ text: t.shareContactButton, request_contact: true }]],
+        resize_keyboard: true,
+        one_time_keyboard: true,
+      },
+    });
     return ctx.wizard.next();
   },
 
-  // Step 3 — phone
+  // Step 3 — phone (either shared contact or typed text).
   async (ctx) => {
-    if (!ctx.message || !('text' in ctx.message)) {
-      await ctx.reply('Пожалуйста, введите номер телефона текстом.');
-      return;
-    }
-    const text = ctx.message.text.trim();
-    if (!/\d{7,}/.test(text.replace(/\D/g, ''))) {
-      await ctx.reply('Номер телефона должен содержать не менее 7 цифр. Попробуйте ещё раз:');
-      return;
-    }
-    lead(ctx).phone = text;
-    await ctx.reply('Введите адрес (город, улица, дом):');
-    return ctx.wizard.next();
-  },
+    const t = tFor(ctx);
 
-  // Step 4 — address
-  async (ctx) => {
-    if (!ctx.message || !('text' in ctx.message)) {
-      await ctx.reply('Пожалуйста, введите адрес текстом.');
+    // Path A — user tapped "Share contact"
+    if (ctx.message && 'contact' in ctx.message && ctx.message.contact) {
+      const contact = ctx.message.contact;
+      // Only accept the user's own contact (anti-spam: prevents sharing someone else's).
+      if (contact.user_id && contact.user_id !== ctx.from?.id) {
+        await ctx.reply(t.notOwnContact);
+        return;
+      }
+      lead(ctx).phone = normalizePhone(contact.phone_number);
+      lead(ctx).phoneVerified = true;
+    }
+    // Path B — user typed a phone number.
+    else if (ctx.message && 'text' in ctx.message) {
+      const text = ctx.message.text.trim();
+      if (text.replace(/\D/g, '').length < 7) {
+        await ctx.reply(t.phoneInvalid);
+        return;
+      }
+      lead(ctx).phone = text;
+      lead(ctx).phoneVerified = false;
+    } else {
+      await ctx.reply(t.pleaseText);
       return;
     }
-    const text = ctx.message.text.trim();
-    if (text.length < 5) {
-      await ctx.reply('Адрес слишком короткий. Пожалуйста, уточните:');
-      return;
-    }
-    lead(ctx).address = text;
+
+    // Move to extra phone — clear the share-contact keyboard, show inline Skip.
+    await ctx.reply(t.askPhoneExtra, {
+      reply_markup: { remove_keyboard: true },
+    });
     await ctx.reply(
-      'Добавьте комментарий к заявке:',
-      Markup.inlineKeyboard([[Markup.button.callback('Пропустить', 'skip')]]),
+      '·',
+      Markup.inlineKeyboard([[Markup.button.callback(t.skipButton, 'skip_extra')]]),
     );
     return ctx.wizard.next();
   },
 
-  // Step 5 — comment (optional)
+  // Step 4 — optional extra phone.
   async (ctx) => {
-    if (ctx.callbackQuery && 'data' in ctx.callbackQuery && ctx.callbackQuery.data === 'skip') {
+    const t = tFor(ctx);
+
+    if (
+      ctx.callbackQuery &&
+      'data' in ctx.callbackQuery &&
+      ctx.callbackQuery.data === 'skip_extra'
+    ) {
+      lead(ctx).phoneExtra = '';
+      await ctx.answerCbQuery();
+    } else if (ctx.message && 'text' in ctx.message) {
+      const text = ctx.message.text.trim();
+      if (text.length > 0 && text.replace(/\D/g, '').length < 7) {
+        await ctx.reply(t.phoneInvalid);
+        return;
+      }
+      lead(ctx).phoneExtra = text;
+    } else {
+      await ctx.reply(t.pleasePhoneOrSkip);
+      return;
+    }
+
+    await ctx.reply(t.askAddress);
+    return ctx.wizard.next();
+  },
+
+  // Step 5 — address.
+  async (ctx) => {
+    const t = tFor(ctx);
+    if (!ctx.message || !('text' in ctx.message)) {
+      await ctx.reply(t.pleaseText);
+      return;
+    }
+    const text = ctx.message.text.trim();
+    if (text.length < 5) {
+      await ctx.reply(t.addressTooShort);
+      return;
+    }
+    lead(ctx).address = text;
+    await ctx.reply(
+      t.askComment,
+      Markup.inlineKeyboard([[Markup.button.callback(t.skipButton, 'skip_comment')]]),
+    );
+    return ctx.wizard.next();
+  },
+
+  // Step 6 — optional comment → review.
+  async (ctx) => {
+    const t = tFor(ctx);
+    if (
+      ctx.callbackQuery &&
+      'data' in ctx.callbackQuery &&
+      ctx.callbackQuery.data === 'skip_comment'
+    ) {
       lead(ctx).comment = '';
       await ctx.answerCbQuery();
     } else if (ctx.message && 'text' in ctx.message) {
       lead(ctx).comment = ctx.message.text.trim();
     } else {
-      await ctx.reply('Пожалуйста, введите комментарий или нажмите «Пропустить».');
+      await ctx.reply(t.pleaseCommentOrSkip);
       return;
     }
 
     const l = lead(ctx);
+    const phoneLine = l.phoneVerified
+      ? `${t.rPhone} ${escMd(l.phone ?? '')} _\\(${escMd(t.rPhoneVerifiedTag)}\\)_`
+      : `${t.rPhone} ${escMd(l.phone ?? '')}`;
+
     const lines = [
-      `📋 *Услуга:* ${escMd(l.serviceLabel ?? '')}`,
-      `👤 *ФИО:* ${escMd(l.fullName ?? '')}`,
-      `📱 *Телефон:* ${escMd(l.phone ?? '')}`,
-      `📍 *Адрес:* ${escMd(l.address ?? '')}`,
-      `💬 *Комментарий:* ${escMd(l.comment || 'не указан')}`,
-    ].join('\n');
+      `${t.rService} ${escMd(l.serviceLabel ?? '')}`,
+      `${t.rName} ${escMd(l.fullName ?? '')}`,
+      phoneLine,
+    ];
+    if (l.phoneExtra) {
+      lines.push(`${t.rPhoneExtra} ${escMd(l.phoneExtra)}`);
+    }
+    lines.push(`${t.rAddress} ${escMd(l.address ?? '')}`);
+    lines.push(`${t.rComment} ${escMd(l.comment || t.rNotSet)}`);
 
     await ctx.reply(
-      `Проверьте данные заявки:\n\n${lines}`,
+      `${escMd(t.reviewTitle)}\n\n${lines.join('\n')}`,
       {
         parse_mode: 'MarkdownV2',
         ...Markup.inlineKeyboard([
           [
-            Markup.button.callback('✅ Отправить', 'confirm'),
-            Markup.button.callback('❌ Отменить', 'cancel'),
+            Markup.button.callback(t.submitButton, 'confirm'),
+            Markup.button.callback(t.cancelButton, 'cancel'),
           ],
         ]),
       },
@@ -134,17 +226,18 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
     return ctx.wizard.next();
   },
 
-  // Step 6 — confirm and submit
+  // Step 7 — confirm and submit.
   async (ctx) => {
+    const t = tFor(ctx);
     if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) {
-      await ctx.reply('Нажмите «Отправить» или «Отменить».');
+      await ctx.reply(t.pleasePickConfirm);
       return;
     }
 
     await ctx.answerCbQuery();
 
     if (ctx.callbackQuery.data === 'cancel') {
-      await ctx.reply('Заявка отменена. Нажмите /start, чтобы начать заново.');
+      await ctx.reply(t.cancelled);
       return ctx.scene.leave();
     }
 
@@ -152,6 +245,17 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
 
     const l = lead(ctx);
     const apiUrl = process.env.API_BASE_URL ?? 'http://localhost:3001';
+
+    // Stuff extra phone + verified tag into the comment for the operator.
+    // The API schema has only one `phone` field — we keep it clean for click-to-call.
+    const annotations: string[] = [];
+    if (l.phoneVerified) annotations.push(`(${t.rPhoneVerifiedTag.replace(/[_*]/g, '')})`);
+    if (l.phoneExtra) annotations.push(`${t.rPhoneExtra.replace(/[_*:]/g, '').trim()}: ${l.phoneExtra}`);
+
+    const commentParts = [
+      ...annotations.map((a) => `[${a}]`),
+      l.comment || '',
+    ].filter(Boolean);
 
     try {
       const res = await fetch(`${apiUrl}/leads`, {
@@ -162,8 +266,9 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
           phone: l.phone,
           address: l.address,
           service: l.service,
-          comment: l.comment || null,
+          comment: commentParts.length ? commentParts.join('\n') : null,
           source: 'TELEGRAM',
+          locale: ctx.session.lang ?? 'ru',
         }),
       });
 
@@ -172,11 +277,11 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
         throw new Error(`API ${res.status}: ${body}`);
       }
 
-      await ctx.reply('✅ Заявка принята! Мы свяжемся с вами в ближайшее время.');
-      await notifyOwner(ctx, l);
+      await ctx.reply(t.accepted);
+      // Owner notification is sent by the API.
     } catch (err) {
       console.error('[bot] failed to submit lead:', err);
-      await ctx.reply('❌ Ошибка при отправке заявки. Попробуйте позже или свяжитесь с нами напрямую.');
+      await ctx.reply(t.apiError);
     }
 
     return ctx.scene.leave();
@@ -184,35 +289,11 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
 );
 
 leadScene.command('cancel', async (ctx) => {
-  await ctx.reply('Заявка отменена. Нажмите /start, чтобы начать заново.');
+  await ctx.reply(tFor(ctx).cancelled);
   return ctx.scene.leave();
 });
 
-async function notifyOwner(
-  ctx: BotContext,
-  l: ReturnType<typeof lead>,
-): Promise<void> {
-  const ownerChatId = process.env.OWNER_CHAT_ID;
-  if (!ownerChatId) return;
-
-  const now = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
-
-  const text = [
-    '🆕 *Новая заявка*',
-    '',
-    `📋 *Услуга:* ${escMd(l.serviceLabel ?? '')}`,
-    `👤 *ФИО:* ${escMd(l.fullName ?? '')}`,
-    `📱 *Телефон:* ${escMd(l.phone ?? '')}`,
-    `📍 *Адрес:* ${escMd(l.address ?? '')}`,
-    `💬 *Комментарий:* ${escMd(l.comment || 'не указан')}`,
-    `📡 *Источник:* Telegram`,
-    `🕒 *Время:* ${escMd(now)}`,
-  ].join('\n');
-
-  await ctx.telegram.sendMessage(ownerChatId, text, { parse_mode: 'MarkdownV2' });
-}
-
-// Escape special chars for MarkdownV2
+// Escape special chars for MarkdownV2.
 function escMd(text: string): string {
   return text.replace(/[_*[\]()~`>#+=|{}.!\\-]/g, '\\$&');
 }

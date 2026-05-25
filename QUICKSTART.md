@@ -66,13 +66,31 @@ pnpm dev
 
 ## Запуск API (нужна для реальной отправки заявок)
 
-### 1. Создай базу данных PostgreSQL
+### 1. Установи PostgreSQL (на Mac через Homebrew)
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
+
+Если `brew` не установлен — https://brew.sh
+
+> На Windows — скачай инсталлер с https://www.postgresql.org/download/windows/
+
+### 2. Создай базу данных
 
 ```bash
 createdb pestfree
 ```
 
-### 2. Настрой `.env`
+Проверь что создалась:
+
+```bash
+psql pestfree -c "\dt"
+# Выведет "Did not find any relations." — это норм, таблиц ещё нет
+```
+
+### 3. Настрой `.env`
 
 ```bash
 cd /Users/sss/Documents/ai/apps/api
@@ -84,17 +102,48 @@ cp ../../.env.example .env
 ```env
 DATABASE_URL=postgresql://localhost:5432/pestfree
 PORT=3001
+
+WEB_ORIGIN=http://localhost:3000
+
+# Те же значения, что в apps/bot/.env
+BOT_TOKEN=<токен из BotFather>
+OWNER_CHAT_ID=<твой Telegram ID>
 ```
 
-### 3. Запусти миграции и сервер
+> **Важно:** теперь уведомления владельцу о новых заявках шлёт **API** (а не бот).
+> Поэтому `BOT_TOKEN` и `OWNER_CHAT_ID` нужны в `apps/api/.env`.
+
+### 4. Запусти миграции и сервер
 
 ```bash
 pnpm install
-pnpm prisma:migrate
+pnpm prisma:migrate    # первый раз спросит имя миграции — введи "init"
 pnpm dev
 ```
 
 API доступна на: **http://localhost:3001**
+
+Проверь:
+
+```bash
+curl http://localhost:3001/health
+# {"status":"ok"} (или похожее)
+
+# Тестовая заявка:
+curl -X POST http://localhost:3001/leads \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"Test","phone":"+998 90 123 45 67","objectType":"APARTMENT","source":"WEBSITE"}'
+# {"id":"...","ok":true}
+```
+
+После этого в Telegram придёт уведомление владельцу. 🎯
+
+### 5. Запусти миграцию повторно если меняешь схему
+
+```bash
+pnpm prisma:migrate
+# затем введи имя миграции, например "add_status_field"
+```
 
 ---
 

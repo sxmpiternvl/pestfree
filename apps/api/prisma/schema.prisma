@@ -11,6 +11,16 @@ enum ServiceType {
   DISINFECTION
   DISINSECTION
   DERATIZATION
+  OUTDOOR
+  CHLORINE
+  SUBSCRIPTION
+}
+
+enum ObjectType {
+  APARTMENT
+  HOUSE
+  BUSINESS
+  OTHER
 }
 
 enum Source {
@@ -18,13 +28,37 @@ enum Source {
   TELEGRAM
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CLOSED
+}
+
 model Lead {
-  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fullName  String
-  phone     String
-  address   String
-  service   ServiceType
-  comment   String?
-  source    Source
-  createdAt DateTime    @default(now())
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName   String
+  phone      String
+  address    String?
+  service    ServiceType?
+  objectType ObjectType?
+  comment    String?
+  source     Source
+  status     LeadStatus   @default(NEW)
+  locale     String?      @db.VarChar(8)
+
+  // Claim — who first picked up the lead
+  claimedAt     DateTime?
+  claimedById   String?   // Telegram user id (string for safety: stays >32 bit)
+  claimedByName String?   // Display name shown in the notification message
+
+  // Sent Telegram notification messages — used to edit them on claim.
+  // Shape: [{ "chatId": "<id>", "messageId": <number> }, ...]
+  notifMessages Json?
+
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([phone])
 }
