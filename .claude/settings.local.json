@@ -17,7 +17,15 @@
       "Bash(curl -s http://localhost:3000)",
       "Bash(kill %1)",
       "Bash(npm show *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(awk '{print $3}')",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(grep -iE \"^XCircle$|^XMark|XSquare\" /tmp/lucide-icons.txt)",
+      "Bash(sed -i '' 's/Loader2/Loader/g; s/AlertCircle/CircleAlert/g' components/LeadForm.tsx)",
+      "Bash(sed -i '' 's/FileCheck2/FileCheck/g' components/sections/WhyUs.tsx)",
+      "Bash(sed -i '' 's/\\\\bHome\\\\b/House/g' components/sections/ForWhom.tsx)",
+      "Bash(npx next *)"
     ]
   }
 }
