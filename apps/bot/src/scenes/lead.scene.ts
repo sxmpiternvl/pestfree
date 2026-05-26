@@ -120,41 +120,40 @@ export const leadScene = new Scenes.WizardScene<BotContext>(
       return;
     }
 
-    // Move to extra phone — clear the share-contact keyboard, show inline Skip.
+    // Move to extra phone — replace the share-contact keyboard with one that
+    // has a single "Skip" button. Same message handles both: tap Skip or type.
     await ctx.reply(t.askPhoneExtra, {
-      reply_markup: { remove_keyboard: true },
+      reply_markup: {
+        keyboard: [[{ text: t.skipButton }]],
+        resize_keyboard: true,
+        one_time_keyboard: true,
+      },
     });
-    await ctx.reply(
-      '·',
-      Markup.inlineKeyboard([[Markup.button.callback(t.skipButton, 'skip_extra')]]),
-    );
     return ctx.wizard.next();
   },
 
-  // Step 4 — optional extra phone.
+  // Step 4 — optional extra phone (text or Skip via bottom keyboard).
   async (ctx) => {
     const t = tFor(ctx);
 
-    if (
-      ctx.callbackQuery &&
-      'data' in ctx.callbackQuery &&
-      ctx.callbackQuery.data === 'skip_extra'
-    ) {
-      lead(ctx).phoneExtra = '';
-      await ctx.answerCbQuery();
-    } else if (ctx.message && 'text' in ctx.message) {
-      const text = ctx.message.text.trim();
-      if (text.length > 0 && text.replace(/\D/g, '').length < 7) {
-        await ctx.reply(t.phoneInvalid);
-        return;
-      }
-      lead(ctx).phoneExtra = text;
-    } else {
+    if (!ctx.message || !('text' in ctx.message)) {
       await ctx.reply(t.pleasePhoneOrSkip);
       return;
     }
 
-    await ctx.reply(t.askAddress);
+    const text = ctx.message.text.trim();
+
+    if (text === t.skipButton) {
+      lead(ctx).phoneExtra = '';
+    } else if (text.replace(/\D/g, '').length < 7) {
+      await ctx.reply(t.phoneInvalid);
+      return;
+    } else {
+      lead(ctx).phoneExtra = text;
+    }
+
+    // Address step has no keyboard — remove the Skip one.
+    await ctx.reply(t.askAddress, { reply_markup: { remove_keyboard: true } });
     return ctx.wizard.next();
   },
 

@@ -73,6 +73,11 @@ interface Dict {
   apiError: string;
   // Services
   services: Record<ServiceKey, ServiceLabel>;
+  // Bot-commands menu (shown when user taps the Menu / "/" button)
+  cmdStart: string;
+  cmdRequest: string;
+  cmdLang: string;
+  cmdCancel: string;
 }
 
 const ru: Dict = {
@@ -125,6 +130,10 @@ const ru: Dict = {
     CHLORINE: { icon: '🧪', label: 'Обработка хлоркой' },
     SUBSCRIPTION: { icon: '🔁', label: 'Абонентское обслуживание' },
   },
+  cmdStart: 'Главное меню',
+  cmdRequest: '📋 Оставить заявку',
+  cmdLang: '🌐 Сменить язык',
+  cmdCancel: 'Отменить заявку',
 };
 
 const uz: Dict = {
@@ -179,6 +188,10 @@ const uz: Dict = {
     CHLORINE: { icon: '🧪', label: 'Xlor bilan ishlov' },
     SUBSCRIPTION: { icon: '🔁', label: 'Abonement xizmati' },
   },
+  cmdStart: 'Bosh menyu',
+  cmdRequest: '📋 So\'rov qoldirish',
+  cmdLang: '🌐 Tilni o\'zgartirish',
+  cmdCancel: 'So\'rovni bekor qilish',
 };
 
 const en: Dict = {
@@ -231,6 +244,10 @@ const en: Dict = {
     CHLORINE: { icon: '🧪', label: 'Chlorine treatment' },
     SUBSCRIPTION: { icon: '🔁', label: 'Subscription' },
   },
+  cmdStart: 'Main menu',
+  cmdRequest: '📋 Send a request',
+  cmdLang: '🌐 Change language',
+  cmdCancel: 'Cancel request',
 };
 
 const dicts: Record<Lang, Dict> = { ru, uz, en };
